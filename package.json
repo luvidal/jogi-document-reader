@@ -1,0 +1,38 @@
+{
+  "name": "@jogi/document-reader",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest --watch"
+  },
+  "dependencies": {
+    "@jogi/cedula": "github:luvidal/jogi-cedula#52e4b8eaf92977898a2b4163db98e3f3ddab1d0f",
+    "@jogi/classifier": "github:luvidal/jogi-classifier#f9f281d6668651f419d178ce788e9889b79422f9",
+    "@jogi/doctypes": "github:luvidal/jogi-doctypes#1ab9db24515b08429d9bd109ee2790b11af0e26b",
+    "@jogi/extract": "github:luvidal/jogi-extract#4006e81974297779f106c5722baccd57a210c610",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^5.4.624"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^4.0.0"
+  }
+}
