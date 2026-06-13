@@ -45,6 +45,23 @@ export interface ReadDocument {
     docdate: string | null
     /** Classifier confidence; `undefined` = forced/trusted. */
     confidence?: number
+    /**
+     * Composite-cédula rendered crops, base64. Present ONLY on `cedula-identidad`
+     * parts split from a SAME-PAGE composite (front/back stacked on one page):
+     * both parts share the same `pages`, so an out-of-process consumer cannot
+     * re-slice these from the original — the bytes come from `@jogi/cedula`'s CV
+     * render. This is the one artifact otherwise sidecar-only (`ReadArtifact.cedula`);
+     * carrying it on the wire lets an HTTP consumer rebuild that sidecar. In-process
+     * callers ignore it and read the sidecar. Consumer: jogi docs/plans/jogi-over-http.md.
+     */
+    cedulaArtifact?: {
+        /** This part's rendered crop (front/back) → the part's stored file. */
+        partBase64: string
+        /** The full rendered composite (rasterized page / original image) → S3 `_original`. */
+        renderedBase64: string
+        renderedMimetype: string
+        renderedExtension: string
+    }
 }
 
 /** IN-PROCESS SIDECAR — buffers persist needs; NOT serialized over HTTP. */

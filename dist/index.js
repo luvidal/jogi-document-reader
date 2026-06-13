@@ -1918,8 +1918,17 @@ function cedulaPartsToResult(result, pageNum) {
       partId: part.partId,
       pages: { start: pageNum, end: pageNum },
       fields: parseFields(part.aiFields),
-      docdate: part.docdate ?? null
+      docdate: part.docdate ?? null,
       // Composite self-detection is trusted — no classifier confidence to gate on.
+      // Same-page composite: both parts share `pages`, so the rendered crops
+      // are not re-sliceable out-of-process — carry them on the wire too. The
+      // in-process `cedula` sidecar below stays the source of truth for Jogi.
+      cedulaArtifact: {
+        partBase64: part.buffer.toString("base64"),
+        renderedBase64: result.renderedBuffer.toString("base64"),
+        renderedMimetype: result.renderedMimetype,
+        renderedExtension: result.renderedExtension
+      }
     };
     documents.push(document);
     artifacts.push({

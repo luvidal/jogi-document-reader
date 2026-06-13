@@ -206,6 +206,17 @@ describe('readDocument — multi-doc PDF read-side behaviors', () => {
         const cedulaArtifacts = artifacts.filter(a => a.cedula)
         expect(cedulaArtifacts).toHaveLength(2)
         expect(cedulaArtifacts[0].cedula).toMatchObject({ renderedMimetype: 'image/png', sourceHash: 'h' })
+        // Same crops also ride the WIRE (base64) so an HTTP consumer can rebuild the
+        // sidecar — both parts share page 2, so they aren't re-sliceable out-of-process.
+        expect(cedula[0].cedulaArtifact).toEqual({
+            partBase64: Buffer.from('cf').toString('base64'),
+            renderedBase64: Buffer.from('rendered').toString('base64'),
+            renderedMimetype: 'image/png',
+            renderedExtension: 'png',
+        })
+        expect(cedula[1].cedulaArtifact!.partBase64).toBe(Buffer.from('cb').toString('base64'))
+        // Non-cédula wire docs never carry it.
+        expect(documents.find(d => d.doctype === 'informe-deuda')!.cedulaArtifact).toBeUndefined()
         // No no-clasificado gap covers the handled cédula page 2.
         const gaps = documents.filter(d => d.doctype === null)
         expect(gaps.every(d => !(d.pages.start <= 2 && d.pages.end >= 2))).toBe(true)
