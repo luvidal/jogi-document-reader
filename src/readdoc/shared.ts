@@ -92,7 +92,7 @@ export function cedulaPartsToResult(
 ): ReadDocumentResult {
     const documents: ReadDocument[] = []
     const artifacts: ReadArtifact[] = []
-    for (const part of result.parts) {
+    result.parts.forEach((part, i) => {
         const document: ReadDocument = {
             doctype: 'cedula-identidad',
             partId: part.partId,
@@ -103,11 +103,15 @@ export function cedulaPartsToResult(
             // Same-page composite: both parts share `pages`, so the rendered crops
             // are not re-sliceable out-of-process — carry them on the wire too. The
             // in-process `cedula` sidecar below stays the source of truth for Jogi.
+            // The shared rendered composite rides only the first part (persist reads
+            // it once, from cedulaArtifacts[0]) — no point duplicating ~400 KB.
             cedulaArtifact: {
                 partBase64: part.buffer.toString('base64'),
-                renderedBase64: result.renderedBuffer.toString('base64'),
-                renderedMimetype: result.renderedMimetype,
-                renderedExtension: result.renderedExtension,
+                ...(i === 0 ? {
+                    renderedBase64: result.renderedBuffer.toString('base64'),
+                    renderedMimetype: result.renderedMimetype,
+                    renderedExtension: result.renderedExtension,
+                } : {}),
             },
         }
         documents.push(document)
@@ -122,6 +126,6 @@ export function cedulaPartsToResult(
                 sourceHash: result.sourceHash,
             },
         })
-    }
+    })
     return { documents, artifacts }
 }

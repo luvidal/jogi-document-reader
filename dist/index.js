@@ -1912,7 +1912,7 @@ function sliceOpsToResult(ops, opBuffers) {
 function cedulaPartsToResult(result, pageNum) {
   const documents = [];
   const artifacts = [];
-  for (const part of result.parts) {
+  result.parts.forEach((part, i) => {
     const document = {
       doctype: "cedula-identidad",
       partId: part.partId,
@@ -1923,11 +1923,15 @@ function cedulaPartsToResult(result, pageNum) {
       // Same-page composite: both parts share `pages`, so the rendered crops
       // are not re-sliceable out-of-process — carry them on the wire too. The
       // in-process `cedula` sidecar below stays the source of truth for Jogi.
+      // The shared rendered composite rides only the first part (persist reads
+      // it once, from cedulaArtifacts[0]) — no point duplicating ~400 KB.
       cedulaArtifact: {
         partBase64: part.buffer.toString("base64"),
-        renderedBase64: result.renderedBuffer.toString("base64"),
-        renderedMimetype: result.renderedMimetype,
-        renderedExtension: result.renderedExtension
+        ...i === 0 ? {
+          renderedBase64: result.renderedBuffer.toString("base64"),
+          renderedMimetype: result.renderedMimetype,
+          renderedExtension: result.renderedExtension
+        } : {}
       }
     };
     documents.push(document);
@@ -1942,7 +1946,7 @@ function cedulaPartsToResult(result, pageNum) {
         sourceHash: result.sourceHash
       }
     });
-  }
+  });
   return { documents, artifacts };
 }
 

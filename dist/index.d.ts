@@ -207,10 +207,15 @@ interface ReadDocument {
     cedulaArtifact?: {
         /** This part's rendered crop (front/back) → the part's stored file. */
         partBase64: string;
-        /** The full rendered composite (rasterized page / original image) → S3 `_original`. */
-        renderedBase64: string;
-        renderedMimetype: string;
-        renderedExtension: string;
+        /**
+         * The full rendered composite (rasterized page / original image) → S3
+         * `_original`. Shared by both parts and consumed exactly once (persist reads
+         * it from the first part), so it rides ONLY the primary (front / first) part
+         * — the other part carries `partBase64` only. Avoids duplicating ~400 KB.
+         */
+        renderedBase64?: string;
+        renderedMimetype?: string;
+        renderedExtension?: string;
     };
 }
 /** IN-PROCESS SIDECAR — buffers persist needs; NOT serialized over HTTP. */
