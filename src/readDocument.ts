@@ -46,6 +46,23 @@ export interface ReadDocument {
     /** Classifier confidence; `undefined` = forced/trusted. */
     confidence?: number
     /**
+     * True when this document is a CONTAINER holding the other documents within
+     * its page range (e.g. carpeta-tributaria). A universal document-structure
+     * fact — lets an out-of-process consumer rebuild the `persistContainer`
+     * plan op without re-running planner overlap logic above the seam. Absent
+     * (falsy) for ordinary classified docs. In-process callers use the sidecar
+     * `planOp`; this is the wire equivalent.
+     */
+    isContainer?: boolean
+    /**
+     * True when the source file could not be parsed (unreadable PDF) — the read
+     * is one whole-file no-clasificado document. Distinguishes an unparseable
+     * file from a readable-but-unclassified one (same wire shape otherwise), so
+     * an HTTP consumer can mirror the in-process persist path + notification
+     * suppression. Wire equivalent of the sidecar `ReadArtifact.unreadable`.
+     */
+    unreadable?: boolean
+    /**
      * Composite-cédula rendered crops, base64. Present ONLY on `cedula-identidad`
      * parts split from a SAME-PAGE composite (front/back stacked on one page):
      * both parts share the same `pages`, so an out-of-process consumer cannot

@@ -54,6 +54,7 @@ vi.mock('@jogi/cedula', () => ({
 }))
 
 import { readDocument } from '../src/readDocument'
+import { noClasificadoResult } from '../src/readdoc/shared'
 
 async function makePdf(pages: number): Promise<Buffer> {
     const pdf = await PDFDocument.create()
@@ -243,6 +244,9 @@ describe('readDocument — multi-doc PDF read-side behaviors', () => {
         // The container slice carries the container op-kind on its (in-process) sidecar.
         const containerArtifact = artifacts.find(a => a.document.doctype === 'carpeta-tributaria')
         expect(containerArtifact?.planOp).toBe('persistContainer')
+        // …and the WIRE equivalent so an HTTP consumer can rebuild the op.
+        expect(containerArtifact!.document.isContainer).toBe(true)
+        expect(documents.find(d => d.doctype === 'declaracion-anual-impuestos')!.isContainer).toBeUndefined()
     })
 })
 
@@ -338,5 +342,15 @@ describe('readDocument — wire carries no derived (no-.data cache hit)', () => 
         expect(documents[0].fields).toEqual({ patente: 'RAW123' })
         expect(documents[0].fields).not.toHaveProperty('precio_mercado')
         expect(runDerivedMock).not.toHaveBeenCalled()
+    })
+})
+
+describe('noClasificadoResult — unreadable rides the wire', () => {
+    it('sets document.unreadable on the wire (not just the sidecar) so HTTP consumers can mirror the path', async () => {
+        const unreadable = await noClasificadoResult(Buffer.from('x'), 'image/jpeg', { unreadable: true })
+        expect(unreadable.documents[0].unreadable).toBe(true)
+        expect(unreadable.artifacts[0].unreadable).toBe(true)
+        const plain = await noClasificadoResult(Buffer.from('x'), 'image/jpeg')
+        expect(plain.documents[0].unreadable).toBeUndefined()
     })
 })

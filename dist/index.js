@@ -1887,7 +1887,10 @@ async function noClasificadoResult(buffer, mimetype, opts) {
     docdate: null
   };
   const artifact = { document, bytes: buffer };
-  if (opts?.unreadable) artifact.unreadable = true;
+  if (opts?.unreadable) {
+    artifact.unreadable = true;
+    document.unreadable = true;
+  }
   return { documents: [document], artifacts: [artifact] };
 }
 function sliceOpsToResult(ops, opBuffers) {
@@ -1902,7 +1905,9 @@ function sliceOpsToResult(ops, opBuffers) {
       pages: { start: doc.start, end: doc.end },
       fields: isNoClasificado ? {} : doc.data ?? {},
       docdate: isNoClasificado ? null : doc.docdate ?? null,
-      ...typeof doc.confidence === "number" ? { confidence: doc.confidence } : {}
+      ...typeof doc.confidence === "number" ? { confidence: doc.confidence } : {},
+      // Wire equivalent of the `persistContainer` plan op — see ReadDocument.isContainer.
+      ...op.op === "persistContainer" ? { isContainer: true } : {}
     };
     documents.push(document);
     artifacts.push({ document, bytes: opBuffers.get(op), planOp: op.op });

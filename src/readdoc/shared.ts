@@ -53,7 +53,10 @@ export async function noClasificadoResult(
         docdate: null,
     }
     const artifact: ReadArtifact = { document, bytes: buffer }
-    if (opts?.unreadable) artifact.unreadable = true
+    if (opts?.unreadable) {
+        artifact.unreadable = true
+        document.unreadable = true   // wire equivalent — HTTP consumers can't infer it
+    }
     return { documents: [document], artifacts: [artifact] }
 }
 
@@ -74,6 +77,8 @@ export function sliceOpsToResult(
             fields: isNoClasificado ? {} : (doc.data ?? {}),
             docdate: isNoClasificado ? null : (doc.docdate ?? null),
             ...(typeof doc.confidence === 'number' ? { confidence: doc.confidence } : {}),
+            // Wire equivalent of the `persistContainer` plan op — see ReadDocument.isContainer.
+            ...(op.op === 'persistContainer' ? { isContainer: true } : {}),
         }
         documents.push(document)
         artifacts.push({ document, bytes: opBuffers.get(op), planOp: op.op })
