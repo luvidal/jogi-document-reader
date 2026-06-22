@@ -18,8 +18,7 @@
  */
 
 import { extract } from '@jogi/extract'
-import { extractCedulaFace } from '@jogi/cedula'
-import { captureWarning } from './ports'
+import { augmentCedulaFace } from './cedulaface'
 import { EXTRACT_MODEL } from './constants'
 
 export interface ExtractedFieldsResult {
@@ -42,21 +41,4 @@ export async function extractFields(
     }
 
     return { data, docdate: r.docdate, usage: r.usage }
-}
-
-async function augmentCedulaFace(
-    data: Record<string, unknown>,
-    buffer: Buffer,
-    mimetype: string,
-): Promise<void> {
-    try {
-        const result = await extractCedulaFace(buffer, mimetype)
-        if (result?.face) data.foto_base64 = result.face
-    } catch (err) {
-        captureWarning('extractFields: cedula face augmentation failed', {
-            module: 'upload-extract',
-            action: 'augment_cedula_face',
-            error: err instanceof Error ? err.message : String(err),
-        })
-    }
 }

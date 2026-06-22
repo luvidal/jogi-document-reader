@@ -44,15 +44,6 @@ var CLASSIFICATION_CONFIDENCE_THRESHOLD = (() => {
 })();
 var CLASSIFY_MODEL = process.env.CLASSIFY_MODEL || "gemini-2.5-pro";
 var EXTRACT_MODEL = process.env.EXTRACT_MODEL || "gemini-2.5-pro";
-async function extractFields(buffer, mimetype, doctype) {
-  const r = await extract(buffer, mimetype, doctype, { model: EXTRACT_MODEL });
-  const data = {};
-  for (const f of r.fields) if (f.value != null) data[f.key] = f.value;
-  if (doctype === "cedula-identidad") {
-    await augmentCedulaFace(data, buffer, mimetype);
-  }
-  return { data, docdate: r.docdate, usage: r.usage };
-}
 async function augmentCedulaFace(data, buffer, mimetype) {
   try {
     const result = await extractCedulaFace(buffer, mimetype);
@@ -64,6 +55,17 @@ async function augmentCedulaFace(data, buffer, mimetype) {
       error: err instanceof Error ? err.message : String(err)
     });
   }
+}
+
+// src/extract.ts
+async function extractFields(buffer, mimetype, doctype) {
+  const r = await extract(buffer, mimetype, doctype, { model: EXTRACT_MODEL });
+  const data = {};
+  for (const f of r.fields) if (f.value != null) data[f.key] = f.value;
+  if (doctype === "cedula-identidad") {
+    await augmentCedulaFace(data, buffer, mimetype);
+  }
+  return { data, docdate: r.docdate, usage: r.usage };
 }
 function existingStandardFontDirFromPackage() {
   try {
@@ -2409,6 +2411,11 @@ async function readSamePageCompositeCedula(buffer, classifiedDocs, totalPages, s
 
 // src/readDocument.ts
 var readDocument = async (buffer, mimetype, opts = {}, deps = {}) => {
+  const result = await runRead(buffer, mimetype, opts, deps);
+  await ensureCedulaFaces(result, mimetype);
+  return result;
+};
+var runRead = async (buffer, mimetype, opts = {}, deps = {}) => {
   const cacheStore = deps.cacheStore ?? NOOP_CACHE_STORE;
   const { forcedDoctype, candidateDoctypes } = opts;
   if (forcedDoctype) return forcedRead(buffer, mimetype, forcedDoctype);
@@ -2436,6 +2443,18 @@ var readDocument = async (buffer, mimetype, opts = {}, deps = {}) => {
   }
   return singleDocRead(buffer, mimetype, classification);
 };
+async function ensureCedulaFaces(result, mimetype) {
+  await Promise.all(result.artifacts.map(async (artifact) => {
+    const doc = artifact.document;
+    if (doc.doctype !== "cedula-identidad" || doc.partId === "back") return;
+    if (doc.fields.foto_base64) return;
+    const cedulaBuf = artifact.cedula?.buffer;
+    const buffer = cedulaBuf ?? artifact.bytes;
+    if (!buffer) return;
+    const mt = cedulaBuf ? artifact.cedula?.renderedMimetype ?? "image/png" : mimetype;
+    await augmentCedulaFace(doc.fields, buffer, mt);
+  }));
+}
 async function forcedRead(buffer, mimetype, forcedDoctype) {
   const forced = await forceExtractDoctypeRaw(buffer, mimetype, forcedDoctype);
   const first = forced.classifiedDocs[0];

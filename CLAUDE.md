@@ -12,6 +12,7 @@ The in-process document READ engine extracted from Jogi's `lib/domain/upload/` (
 ## Depends on
 - `@jogi/doctypes` (catalog + `getDoctypesMap`/`doctypesCatalog`), `@jogi/classifier` (Pass 1), `@jogi/extract` (Pass 2), `@jogi/cedula` (composite split + face). Runtime: `pdf-lib`, `pdfjs-dist`. NOTHING else — no Next/Prisma/S3/linking/records/quota/notify/derived.
 ## Behaviors
+- [ ] Every cédula-identidad FRONT leaving `readDocument` carries `foto_base64` (Rekognition face crop). `extractFields` adds it on the single-doc/forced Pass-2, but the slice short-circuit, composite split, and cache-hit paths skip Pass-2 — so `ensureCedulaFaces` (post-pass in `readDocument`, shared helper `cedulaface.ts`) re-runs `@jogi/cedula`'s `extractCedulaFace` for any front still missing it. Idempotent + front-only; best-effort (a face failure never fails the read).
 - [ ] The 4 satellites get `doctypes` + gated `geminiCall` by INJECTION from the host (`globalThis` config); this package never holds AI credentials.
 - [ ] Slice-cache store (`ai_caches` Prisma I/O) is an injected `CacheStore` (`deps.cacheStore`); the package ships only key computation (no DB). Default = no-op store.
 - [ ] Logging / error capture / pass-through-error predicate are no-ops until the host calls `configureEnginePorts`. A pure SaaS may leave them unset.

@@ -24,10 +24,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { PDFDocument } from 'pdf-lib'
 import type { CacheStore } from '../src/readDocument'
 
-const { classifierMock, extractFieldsMock, splitCompositeMock, getDerivedRulesMock, runDerivedMock } = vi.hoisted(() => ({
+const { classifierMock, extractFieldsMock, splitCompositeMock, extractFaceMock, getDerivedRulesMock, runDerivedMock } = vi.hoisted(() => ({
     classifierMock: vi.fn(),
     extractFieldsMock: vi.fn(),
     splitCompositeMock: vi.fn(),
+    extractFaceMock: vi.fn(),
     getDerivedRulesMock: vi.fn((_id?: string): Array<{ key: string }> => []),
     runDerivedMock: vi.fn(),
 }))
@@ -50,7 +51,7 @@ vi.mock('../src/pdfaugment', () => ({
 vi.mock('@jogi/cedula', () => ({
     splitCompositeCedula: splitCompositeMock,
     isUnreadable: (r: any) => !!r && r.unreadable === true,
-    extractCedulaFace: vi.fn(async () => null),
+    extractCedulaFace: extractFaceMock,
 }))
 
 import { readDocument } from '../src/readDocument'
@@ -65,6 +66,7 @@ async function makePdf(pages: number): Promise<Buffer> {
 beforeEach(() => {
     vi.clearAllMocks()
     splitCompositeMock.mockResolvedValue(null)
+    extractFaceMock.mockResolvedValue(null)
     extractFieldsMock.mockResolvedValue({ data: {}, docdate: null })
     // A real derived rule for padron — readDocument must still NOT apply it.
     getDerivedRulesMock.mockImplementation((id?: string) => (id === 'padron' ? [{ key: 'precio_mercado' }] : []))
@@ -342,6 +344,61 @@ describe('readDocument — wire carries no derived (no-.data cache hit)', () => 
         expect(documents[0].fields).toEqual({ patente: 'RAW123' })
         expect(documents[0].fields).not.toHaveProperty('precio_mercado')
         expect(runDerivedMock).not.toHaveBeenCalled()
+    })
+})
+
+describe('readDocument — cédula face post-pass', () => {
+    it('multi-doc PDF cédula front gets foto_base64 even when Pass-2 extract never adds it', async () => {
+        // Front + back on SEPARATE pages → regular slice path (not a composite).
+        // The slice path's `extractFields` (mocked) returns only text fields — no
+        // face — so the front photo can ONLY come from the readDocument post-pass.
+        classifierMock.mockResolvedValueOnce([
+            { id: 'cedula-identidad', start: 1, end: 1, partId: 'front', confidence: 0.95, docdate: '2026-01-01' },
+            { id: 'cedula-identidad', start: 2, end: 2, partId: 'back', confidence: 0.95, docdate: '2026-01-01' },
+        ])
+        extractFieldsMock.mockResolvedValue({ data: { rut: '11.111.111-1' }, docdate: '2026-01-01' })
+        extractFaceMock.mockResolvedValue({ face: 'FRONT_FACE_B64', confidence: 99 })
+        const buffer = await makePdf(2)
+
+        const { documents } = await readDocument(buffer, 'application/pdf')
+
+        const front = documents.find(d => d.doctype === 'cedula-identidad' && d.partId === 'front')!
+        const back = documents.find(d => d.doctype === 'cedula-identidad' && d.partId === 'back')!
+        expect(front.fields.foto_base64).toBe('FRONT_FACE_B64')
+        // Back side has no face — the post-pass never even calls Rekognition for it.
+        expect(back.fields).not.toHaveProperty('foto_base64')
+        expect(extractFaceMock).toHaveBeenCalledTimes(1)
+    })
+
+    it('composite cédula front gets foto_base64 (cedulaPartsToResult never calls extractFields)', async () => {
+        splitCompositeMock.mockResolvedValueOnce({
+            parts: [
+                { partId: 'front', buffer: Buffer.from('front-img'), aiFields: '{"rut":"1"}', aiDate: null, docdate: null },
+                { partId: 'back', buffer: Buffer.from('back-img'), aiFields: '{}', aiDate: null, docdate: null },
+            ],
+            renderedBuffer: Buffer.from('rendered'), renderedMimetype: 'image/png', renderedExtension: 'png', sourceHash: 'h',
+        })
+        extractFaceMock.mockResolvedValue({ face: 'COMPOSITE_FACE_B64', confidence: 99 })
+        const buffer = Buffer.from('composite-jpeg')
+
+        const { documents } = await readDocument(buffer, 'image/jpeg')
+
+        const front = documents.find(d => d.partId === 'front')!
+        const back = documents.find(d => d.partId === 'back')!
+        expect(front.fields.foto_base64).toBe('COMPOSITE_FACE_B64')
+        expect(back.fields).not.toHaveProperty('foto_base64')
+    })
+
+    it('does not overwrite a face the single-doc Pass-2 already added (idempotent)', async () => {
+        classifierMock.mockResolvedValueOnce([{ id: 'cedula-identidad', start: 1, end: 1, confidence: 0.9 }])
+        extractFieldsMock.mockResolvedValueOnce({ data: { rut: 'x', foto_base64: 'INLINE_FACE' }, docdate: null })
+        extractFaceMock.mockResolvedValue({ face: 'POSTPASS_FACE', confidence: 99 })
+        const buffer = Buffer.from('cedula-jpeg')
+
+        const { documents } = await readDocument(buffer, 'image/jpeg')
+
+        expect(documents[0].fields.foto_base64).toBe('INLINE_FACE')
+        expect(extractFaceMock).not.toHaveBeenCalled()
     })
 })
 

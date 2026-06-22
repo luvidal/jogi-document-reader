@@ -19,6 +19,7 @@
 import { classifyDocumentRaw } from './classify/orchestrator'
 import type { ClassificationResult } from './classify/types'
 import { forceExtractDoctypeRaw } from './forcedRaw'
+import { augmentCedulaFace } from './cedulaface'
 import type { SliceOp } from './planner'
 import type { SliceCacheKey, SliceCacheHit, SliceCachePutInput } from './slicecache'
 import { readCompositeCedula } from './readdoc/composite'
@@ -167,6 +168,14 @@ export type ReadDocumentFn = (
  * endpoint, so the SaaS becomes a transport swap, not a rewrite.
  */
 export const readDocument: ReadDocumentFn = async (buffer, mimetype, opts = {}, deps = {}) => {
+    const result = await runRead(buffer, mimetype, opts, deps)
+    // Single chokepoint: every cédula FRONT leaving the engine carries its face
+    // photo, regardless of which branch built it (see `ensureCedulaFaces`).
+    await ensureCedulaFaces(result, mimetype)
+    return result
+}
+
+const runRead: ReadDocumentFn = async (buffer, mimetype, opts = {}, deps = {}) => {
     const cacheStore = deps.cacheStore ?? NOOP_CACHE_STORE
     const { forcedDoctype, candidateDoctypes } = opts
 
@@ -200,6 +209,38 @@ export const readDocument: ReadDocumentFn = async (buffer, mimetype, opts = {}, 
 
     // 6. Single document (or no-clasificado).
     return singleDocRead(buffer, mimetype, classification)
+}
+
+/**
+ * Guarantee every cédula FRONT leaving `readDocument` carries `foto_base64`
+ * (the avatar photo Rekognition crops from the front side).
+ *
+ * Face extraction is bolted onto Pass-2 `extractFields`, but three read paths
+ * build a cédula document WITHOUT calling it: the slice short-circuit
+ * (`fillMissingSliceData` returns early when the classifier already populated
+ * data + docdate), the composite split (`cedulaPartsToResult` takes fields
+ * straight from `@jogi/cedula`), and slice-cache hits. Before this post-pass a
+ * multi-doc-PDF or composite cédula front silently lost its photo — the
+ * in-process → engine lift dropped the legacy unconditional face augmentation.
+ *
+ * Idempotent and front-only: skips backs (no face) and fronts that already have
+ * `foto_base64` (single-doc / forced paths add it inline via `extractFields`),
+ * so it runs Rekognition exactly once, only where it's missing.
+ */
+async function ensureCedulaFaces(result: ReadDocumentResult, mimetype: string): Promise<void> {
+    await Promise.all(result.artifacts.map(async (artifact) => {
+        const doc = artifact.document
+        if (doc.doctype !== 'cedula-identidad' || doc.partId === 'back') return
+        if (doc.fields.foto_base64) return
+        // Composite crops are images (Rekognition/sharp sniff the bytes, so the
+        // mimetype string only needs the `image/` family); slice / whole-file
+        // artifacts keep the original mimetype (a PDF rasterizes page 1).
+        const cedulaBuf = artifact.cedula?.buffer
+        const buffer = cedulaBuf ?? artifact.bytes
+        if (!buffer) return
+        const mt = cedulaBuf ? (artifact.cedula?.renderedMimetype ?? 'image/png') : mimetype
+        await augmentCedulaFace(doc.fields, buffer, mt)
+    }))
 }
 
 /** Forced-doctype read: raw extract, one whole-file document. No derived. */
